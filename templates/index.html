@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Qwen × Excel — обработчик</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; font: 16px/1.5 system-ui, sans-serif;
+      background: #0e141d; color: #e8edf5;
+      display: flex; justify-content: center; padding: 48px 16px;
+    }
+    main { width: 100%; max-width: 640px; }
+    h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: .3px; }
+    p.sub { color: #8c9bb0; margin: 0 0 28px; }
+    .card {
+      background: #131b26; border: 1px solid #263349; border-radius: 12px;
+      padding: 20px; margin-bottom: 16px;
+    }
+    label { display: block; font-size: 13px; color: #8c9bb0; margin: 0 0 8px; }
+    input[type=file] { width: 100%; color: #e8edf5; }
+    select, button {
+      width: 100%; padding: 12px 14px; border-radius: 10px; font-size: 15px;
+      border: 1px solid #263349; background: #0e141d; color: #e8edf5;
+    }
+    button {
+      background: #ffb454; color: #241300; font-weight: 700; cursor: pointer;
+      border: none; margin-top: 14px; transition: filter .15s;
+    }
+    button:hover { filter: brightness(1.07); }
+    button:disabled { opacity: .55; cursor: wait; }
+    .row { margin-bottom: 14px; }
+    #status { min-height: 22px; font-size: 14px; color: #8c9bb0; margin: 14px 2px; }
+    #status.err { color: #f2708a; }
+    a.download {
+      display: inline-block; margin-top: 6px; padding: 12px 18px;
+      background: #4fd6a8; color: #062018; font-weight: 700; text-decoration: none;
+      border-radius: 10px;
+    }
+    pre {
+      background: #0b1017; border: 1px solid #263349; border-radius: 10px;
+      padding: 12px; font-size: 13px; overflow: auto;
+    }
+    .hint { font-size: 12px; color: #61708a; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Qwen × Excel</h1>
+    <p class="sub">
+      Загрузите Excel-файлы, выберите промпт — сервер отправит таблицы
+      в Qwen и вернёт готовый отчёт новым файлом.
+    </p>
+
+    <form id="form" class="card">
+      <div class="row">
+        <label>Excel-файлы (до {{ max_files }} шт.: .xlsx, .xls, .xlsm, .csv)</label>
+        <input type="file" id="files" name="files[]" multiple
+               accept=".xlsx,.xls,.xlsm,.csv" required>
+      </div>
+      <div class="row">
+        <label>Промпт из promt.yaml</label>
+        <select name="prompt_id">
+          {% for p in prompts %}
+          <option value="{{ p.id }}"
+            {% if p.id == default_prompt %}selected{% endif %}>{{ p.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" id="run">Обработать ({{ model }})</button>
+    </form>
+
+    <div id="status"></div>
+    <a id="download" class="download" hidden>Скачать отчёт.xlsx</a>
+    <pre id="preview" hidden></pre>
+    <p class="hint">Файлы обрабатываются на вашем сервере и не сохраняются после ответа.</p>
+  </main>
+
+  <script>
+    var form = document.getElementById('form');
+    var status = document.getElementById('status');
+    var btn = document.getElementById('run');
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var data = new FormData(form);
+      btn.disabled = true;
+      status.className = '';
+      status.textContent = 'Читаем файлы и отправляем таблицы в Qwen…';
+      document.getElementById('download').hidden = true;
+      document.getElementById('preview').hidden = true;
+
+      fetch('/api/process', { method: 'POST', body: data })
+        .then(function (r) { return r.json(); })
+        .then(function (json) {
+          if (!json.ok) throw new Error(json.error || 'ошибка обработки');
+          var a = document.getElementById('download');
+          a.href = json.download_url;
+          a.hidden = false;
+          var pre = document.getElementById('preview');
+          pre.textContent = json.preview
+            .map(function (s) { return s.sheet + ': ' + s.rows + ' строк'; })
+            .join('\n');
+          pre.hidden = false;
+          status.textContent = 'Готово — файл можно скачать.';
+        })
+        .catch(function (err) {
+          status.className = 'err';
+          status.textContent = 'Ошибка: ' + err.message;
+        })
+        .finally(function () { btn.disabled = false; });
+    });
+  </script>
+</body>
+</html>
